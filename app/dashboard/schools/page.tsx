@@ -134,7 +134,7 @@ export default function SchoolsPage() {
                       <Users className="h-5 w-5 text-muted-foreground" />
                       <div className="space-y-1">
                         <p className="text-sm font-medium leading-none">
-                          Students Enrolled
+                          Solar Recipients
                         </p>
                         <p className="text-2xl font-bold">
                           {school.totalStudents}
