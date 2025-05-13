@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpDown, Eye, Search } from "lucide-react";
+import { useDebounce } from "use-debounce";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
   Table,
@@ -17,14 +19,48 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+
 import { Student } from "@/lib/data/mock-data";
 import { transformKoboDataToAppFormat } from "@/lib/data/kobo-transformer";
 import { mockStudents, mockSummary } from "@/lib/data/mock-data";
 
+// Memoized row component for performance
+const StudentRow = ({ student }: { student: Student }) => (
+  <TableRow key={student.id}>
+    <TableCell>
+      <div className="flex items-center gap-2">
+        <Avatar className="h-8 w-8">
+          <AvatarImage src={student.photo} alt={student.name} loading="lazy" />
+          <AvatarFallback>{student.name.substring(0, 2)}</AvatarFallback>
+        </Avatar>
+        <span>{student.name}</span>
+      </div>
+    </TableCell>
+    <TableCell>{student.age}</TableCell>
+    <TableCell>{student.school?.name || "Unknown"}</TableCell>
+    <TableCell>
+      <Badge variant="outline">{student.careerAspiration}</Badge>
+    </TableCell>
+    <TableCell>
+      <span className="font-mono text-xs">{student.lampSerialNumber}</span>
+    </TableCell>
+    <TableCell className="text-right">
+      <Link href={`/dashboard/students/${student.id}`} passHref>
+        <Button variant="ghost" size="icon">
+          <Eye className="h-4 w-4" />
+          <span className="sr-only">View</span>
+        </Button>
+      </Link>
+    </TableCell>
+  </TableRow>
+);
+
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery] = useDebounce(searchQuery, 300);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
@@ -37,25 +73,34 @@ export default function StudentsPage() {
         const koboData = data.results || data;
         const { students, summary } = transformKoboDataToAppFormat(koboData);
         setStudents(students);
-        return { students, summary };
       } catch (error: any) {
         console.error("❌ Error fetching students:", error);
         setError(error.message || "Failed to load students");
         setStudents(mockStudents); // fallback
-        return { students: mockStudents, summary: mockSummary };
+      } finally {
+        setLoading(false);
       }
     }
+
     fetchStudents();
   }, []);
 
-  const filteredStudents = students.filter(
-    (student) =>
-      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.school.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.lampSerialNumber.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredStudents = useMemo(() => {
+    return students.filter(
+      (student) =>
+        student.name.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+        student.school.name
+          .toLowerCase()
+          .includes(debouncedQuery.toLowerCase()) ||
+        student.lampSerialNumber
+          .toLowerCase()
+          .includes(debouncedQuery.toLowerCase())
+    );
+  }, [students, debouncedQuery]);
 
-  const visibleStudents = filteredStudents.slice(0, visibleCount);
+  const visibleStudents = useMemo(() => {
+    return filteredStudents.slice(0, visibleCount);
+  }, [filteredStudents, visibleCount]);
 
   return (
     <DashboardLayout>
@@ -84,9 +129,24 @@ export default function StudentsPage() {
             <CardTitle>Student Registry</CardTitle>
           </CardHeader>
           <CardContent>
-            {filteredStudents.length === 0 ? (
-              <div className="text-center py-4 text-muted-foreground">
-                No students found
+            {loading ? (
+              <div className="space-y-2 py-4">
+                {/* Simulate 15 skeleton rows */}
+                {Array.from({ length: 15 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-4 animate-pulse px-4 py-2 bg-muted/30 rounded-md"
+                  >
+                    <div className="h-8 w-8 rounded-full bg-muted" />
+                    <div className="flex-1 grid grid-cols-5 gap-4">
+                      <div className="h-4 bg-muted rounded col-span-1" />
+                      <div className="h-4 bg-muted rounded col-span-1" />
+                      <div className="h-4 bg-muted rounded col-span-1" />
+                      <div className="h-4 bg-muted rounded col-span-1" />
+                      <div className="h-4 bg-muted rounded col-span-1" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <>
@@ -108,47 +168,7 @@ export default function StudentsPage() {
                   </TableHeader>
                   <TableBody>
                     {visibleStudents.map((student) => (
-                      <TableRow key={student.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage
-                                src={student.photo}
-                                alt={student.name}
-                              />
-                              <AvatarFallback>
-                                {student.name.substring(0, 2)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span>{student.name}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{student.age}</TableCell>
-                        <TableCell>
-                          {student.school?.name || "Unknown"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {student.careerAspiration}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-xs">
-                            {student.lampSerialNumber}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Link
-                            href={`/dashboard/students/${student.id}`}
-                            passHref
-                          >
-                            <Button variant="ghost" size="icon">
-                              <Eye className="h-4 w-4" />
-                              <span className="sr-only">View</span>
-                            </Button>
-                          </Link>
-                        </TableCell>
-                      </TableRow>
+                      <StudentRow key={student.id} student={student} />
                     ))}
                   </TableBody>
                 </Table>

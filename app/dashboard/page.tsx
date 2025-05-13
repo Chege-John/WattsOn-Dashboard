@@ -11,6 +11,21 @@ import { Student, Summary } from "@/lib/data/mock-data";
 import { mockStudents, mockSummary } from "@/lib/data/mock-data";
 import { transformKoboDataToAppFormat } from "@/lib/data/kobo-transformer";
 
+// Lazy load BarChart
+import dynamic from "next/dynamic";
+const LazyBarChart = dynamic(
+  () => import("@/components/dashboard/charts").then((mod) => mod.BarChart),
+  {
+    ssr: false, // Only render on the client side
+    loading: () => (
+      <div className="animate-pulse flex flex-col gap-6 mt-6">
+        {/* Skeleton for BarChart */}
+        <div className="bg-muted/20 rounded-md h-[600px] w-full"></div>
+      </div>
+    ), // Show skeleton loader while the component is loading
+  }
+);
+
 export default function DashboardPage() {
   const [students, setStudents] = useState<Student[]>(mockStudents);
   const [summary, setSummary] = useState<Summary>(mockSummary);
@@ -78,10 +93,33 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-screen">
-          <div className="text-center">
-            <div className="w-16 h-16 border-4 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading dashboard data...</p>
+        <div className="flex flex-col gap-6 p-4">
+          {/* Skeleton Header */}
+          <div className="h-8 w-1/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+
+          {/* Stat Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={`stat-card-${i}`}
+                className="h-40 bg-gray-200 dark:bg-gray-700 rounded-md animate-pulse"
+              />
+            ))}
+          </div>
+
+          {/* Middle Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={`middle-card-${i}`}
+                className="h-[250px] bg-gray-200 dark:bg-gray-700 rounded-md animate-pulse"
+              />
+            ))}
+          </div>
+
+          {/* Bar Chart */}
+          <div className="grid gap-4 grid-cols-1 mt-4">
+            <div className="h-[600px] bg-gray-200 dark:bg-gray-700 rounded-md animate-pulse" />
           </div>
         </div>
       </DashboardLayout>
@@ -107,6 +145,7 @@ export default function DashboardPage() {
             description="Students reached"
             trend="up"
             trendValue="12%"
+            className="h-40"
           />
           <CardStat
             title="Total Lamps"
@@ -114,12 +153,14 @@ export default function DashboardPage() {
             description="Lamps distributed"
             trend="up"
             trendValue="8%"
+            className="h-40"
           />
           <CardStat
             title="Average Age"
             value={summary.averageAge ?? 0}
             description="Years"
             trend="neutral"
+            className="h-40"
           />
           <CardStat
             title="Avg. Meals Per Day"
@@ -127,6 +168,7 @@ export default function DashboardPage() {
             description="Meals"
             trend="down"
             trendValue="3%"
+            className="h-40"
           />
         </div>
 
@@ -192,9 +234,10 @@ export default function DashboardPage() {
           </Card>
         </div>
 
+        {/* Lazy load BarChart */}
         <div className="grid gap-4 grid-cols-1">
           <ChartContainer title="Most Common Career Aspirations">
-            <BarChart data={careerAspirationsByGender} height={600} />
+            <LazyBarChart data={careerAspirationsByGender} height={600} />
           </ChartContainer>
         </div>
       </div>

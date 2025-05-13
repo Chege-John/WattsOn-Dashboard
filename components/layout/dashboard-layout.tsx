@@ -13,7 +13,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
-    <div className="flex min-h-screen light:bg-[#fcfbfc]">
+    <div className="flex min-h-screen dark:bg-[#000] bg-[#f8f9fb]">
       <DashboardSidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
       <div
         className={cn(
