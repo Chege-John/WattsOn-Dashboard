@@ -1,29 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { CardStat } from "@/components/dashboard/card-stat";
 import { ChartContainer } from "@/components/dashboard/chart-container";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart, PieChart } from "@/components/dashboard/charts";
 import { prepareCareerAspirationsByGender } from "@/lib/chartData";
 import { Student, Summary } from "@/lib/data/mock-data";
 import { mockStudents, mockSummary } from "@/lib/data/mock-data";
 import { transformKoboDataToAppFormat } from "@/lib/data/kobo-transformer";
 
-// Lazy load BarChart
-import dynamic from "next/dynamic";
-const LazyBarChart = dynamic(
-  () => import("@/components/dashboard/charts").then((mod) => mod.BarChart),
-  {
-    ssr: false, // Only render on the client side
-    loading: () => (
-      <div className="animate-pulse flex flex-col gap-6 mt-6">
-        {/* Skeleton for BarChart */}
-        <div className="bg-muted/20 rounded-md h-[600px] w-full"></div>
-      </div>
-    ), // Show skeleton loader while the component is loading
-  }
+// Import the chart components directly
+// No need for dynamic import if they're properly marked with "use client"
+import { BarChart, PieChart } from "@/components/dashboard/charts";
+
+// Fallback loading component
+const ChartLoading = ({ height = 250 }: { height?: number }) => (
+  <div
+    className="animate-pulse bg-gray-200 dark:bg-gray-700 rounded-md w-full"
+    style={{ height: `${height}px` }}
+  />
 );
 
 export default function DashboardPage() {
@@ -31,45 +27,48 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<Summary>(mockSummary);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Fix hydration issues by confirming client-side mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
-
     async function loadData() {
       setIsLoading(true);
       try {
         const res = await fetch("/api/forms/akGkJBQrKG6gWJ6daFNRtR", {
-          headers: {
-            "Cache-Control": "no-cache",
-          },
+          headers: { "Cache-Control": "no-cache" },
         });
-
-        if (!res.ok) {
-          throw new Error(`API error: ${res.statusText}`);
-        }
-
+        if (!res.ok) throw new Error(`API error: ${res.statusText}`);
         const data = await res.json();
-        const transformed = transformKoboDataToAppFormat(data.results || data);
 
+        console.log("Fetched data:", data); // Debug log
+
+        const transformed = transformKoboDataToAppFormat(data.results || data);
         if (!isMounted) return;
 
-        // Only update state if data actually changed
-        const isSameData =
-          JSON.stringify(transformed.students) === JSON.stringify(students) &&
-          JSON.stringify(transformed.summary) === JSON.stringify(summary);
+        console.log("Transformed data:", transformed); // Debug log
 
-        if (!isSameData) {
-          setStudents(transformed.students);
-          setSummary(transformed.summary);
+        if (
+          !Array.isArray(transformed.students) ||
+          !Array.isArray(transformed.summary?.genderDistribution)
+        ) {
+          console.warn("Invalid transformed data, using mock data");
+          setStudents(mockStudents);
+          setSummary(mockSummary);
+          setError("Invalid data format, using mock data");
+          return;
         }
-
+        setStudents(transformed.students);
+        setSummary(transformed.summary);
         setError(null);
       } catch (err) {
-        console.error("❌ Error loading data:", err);
+        console.error("Error:", err);
         if (isMounted) {
-          setError(
-            "Failed to load data from KoboToolbox. Using mock data instead."
-          );
+          setError("Failed to load data. Using mock data.");
           setStudents(mockStudents);
           setSummary(mockSummary);
         }
@@ -77,27 +76,34 @@ export default function DashboardPage() {
         if (isMounted) setIsLoading(false);
       }
     }
-
     loadData();
-
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // ⏱ Memoize computed data
+  // Memoize computed data
   const careerAspirationsByGender = useMemo(() => {
     return prepareCareerAspirationsByGender(students);
   }, [students]);
+
+  // Check if data is valid for charts
+  const hasValidGenderData =
+    summary?.genderDistribution &&
+    Array.isArray(summary.genderDistribution) &&
+    summary.genderDistribution.length > 0;
+
+  const hasValidCareerData =
+    careerAspirationsByGender &&
+    Array.isArray(careerAspirationsByGender) &&
+    careerAspirationsByGender.length > 0;
 
   if (isLoading) {
     return (
       <DashboardLayout>
         <div className="flex flex-col gap-6 p-4">
-          {/* Skeleton Header */}
+          {/* Skeleton content */}
           <div className="h-8 w-1/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-
-          {/* Stat Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div
@@ -106,8 +112,6 @@ export default function DashboardPage() {
               />
             ))}
           </div>
-
-          {/* Middle Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <div
@@ -116,8 +120,6 @@ export default function DashboardPage() {
               />
             ))}
           </div>
-
-          {/* Bar Chart */}
           <div className="grid gap-4 grid-cols-1 mt-4">
             <div className="h-[600px] bg-gray-200 dark:bg-gray-700 rounded-md animate-pulse" />
           </div>
@@ -211,19 +213,23 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[250px]">
-                {summary.genderDistribution?.length ? (
-                  <PieChart
-                    data={summary.genderDistribution}
-                    dataKey="count"
-                    nameKey="gender"
-                    colors={["#875CF5", "#FA2C37", "#FF6900"]}
-                    label="Gender"
-                    totalAmount={`${summary.genderDistribution.reduce(
-                      (acc, val) => acc + val.count,
-                      0
-                    )}`}
-                    showTextAnchor
-                  />
+                {!mounted ? (
+                  <ChartLoading height={250} />
+                ) : hasValidGenderData ? (
+                  <Suspense fallback={<ChartLoading height={250} />}>
+                    <PieChart
+                      data={summary.genderDistribution}
+                      dataKey="count"
+                      nameKey="gender"
+                      colors={["#875CF5", "#FA2C37", "#FF6900"]}
+                      label="Gender"
+                      totalAmount={`${summary.genderDistribution.reduce(
+                        (acc, val) => acc + val.count,
+                        0
+                      )}`}
+                      showTextAnchor
+                    />
+                  </Suspense>
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     No gender distribution data available
@@ -234,10 +240,21 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Lazy load BarChart */}
         <div className="grid gap-4 grid-cols-1">
           <ChartContainer title="Most Common Career Aspirations">
-            <LazyBarChart data={careerAspirationsByGender} height={600} />
+            {!mounted ? (
+              <ChartLoading height={600} />
+            ) : hasValidCareerData ? (
+              <Suspense fallback={<ChartLoading height={600} />}>
+                <BarChart data={careerAspirationsByGender} height={600} />
+              </Suspense>
+            ) : (
+              <div className="flex h-[600px] items-center justify-center">
+                <p className="text-sm text-muted-foreground">
+                  No career aspirations data available
+                </p>
+              </div>
+            )}
           </ChartContainer>
         </div>
       </div>
