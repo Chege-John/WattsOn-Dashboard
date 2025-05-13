@@ -13,8 +13,11 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "SolarBright Dashboard",
-  description: "NGO dashboard for solar lamp distribution to students",
+  title: "WattsOn Dashboard",
+  description: "Empowering students with solar light",
+  icons: {
+    icon: "/logo-top.png",
+  },
 };
 
 export default function RootLayout({
