@@ -173,11 +173,7 @@ export default function SchoolsPage() {
                   </div>
                 </CardContent>
                 <CardFooter className="border-t bg-muted/50 px-6 py-4">
-                  <Link
-                    href={`/dashboard/schools/${school.id}`}
-                    passHref
-                    className="w-full"
-                  >
+                  <Link href={`/dashboard/schools/${school.id}`}>
                     <Button variant="outline" className="w-full">
                       <Eye className="mr-2 h-4 w-4" />
                       View Details
