@@ -10,8 +10,10 @@ const Progress = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
 >(({ className, value, ...props }, ref) => {
   // Clamp value between 0 and 100 to ensure valid CSS
+
   const clampedValue = Math.max(0, Math.min(100, value ?? 0));
-  const transformValue = `translateX(-${100 - clampedValue}%)`;
+  const percentValue = 100 - clampedValue;
+  const transformValue = `translateX(-${percentValue}%)`;
 
   return (
     <ProgressPrimitive.Root
