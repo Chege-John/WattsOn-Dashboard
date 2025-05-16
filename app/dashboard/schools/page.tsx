@@ -1,5 +1,3 @@
-// src/app/(dashboard)/schools/page.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -31,7 +29,7 @@ import { School, mockSchools } from "@/lib/data/mock-data";
 const ITEMS_PER_PAGE = 6;
 
 export default function SchoolsPage() {
-  const [schools, setSchools] = useState<School[]>([]); // Initialize as empty array
+  const [schools, setSchools] = useState<School[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -41,28 +39,45 @@ export default function SchoolsPage() {
     async function fetchSchools() {
       try {
         setIsLoading(true);
-        const res = await fetch("/api/forms/akGkJBQrKG6gWJ6daFNRtR");
-        if (!res.ok) {
-          throw new Error(
-            `Failed to fetch school data: ${res.status} ${res.statusText}`
-          );
+
+        const formUids = [
+          "akGkJBQrKG6gWJ6daFNRtR", // original
+          "aHcZMhtYyZVbHmeSBWekQV",
+          "aUBsroNaJkqhgmuXnxCbJT",
+          "aXnSzAesKR8e6sp4ZzDAdr",
+        ];
+
+        const allResults: any[] = [];
+
+        for (const uid of formUids) {
+          const res = await fetch(`/api/forms/${uid}`);
+          if (!res.ok) {
+            throw new Error(
+              `Failed to fetch data for UID ${uid}: ${res.status} ${res.statusText}`
+            );
+          }
+
+          const data = await res.json();
+          const koboData = data.results || data;
+          allResults.push(...koboData);
         }
-        const data = await res.json();
-        console.log("📦 API response:", data);
-        const koboData = data.results || data;
-        console.log("📊 Processed koboData:", koboData);
-        const { summary } = transformKoboDataToAppFormat(koboData);
-        console.log("✅ Transformed school data:", summary.schools);
-        setSchools(summary.schools || []); // Ensure schools is an array
+
+        console.log("📦 Combined API response:", allResults);
+
+        const { summary } = transformKoboDataToAppFormat(allResults);
+        console.log("✅ Transformed combined school data:", summary.schools);
+
+        setSchools(summary.schools || []);
         setError(null);
       } catch (err: any) {
         console.error("❌ Error fetching schools:", err);
         setError(err.message || "Failed to load schools");
-        setSchools(mockSchools); // Fallback to mock data
+        setSchools(mockSchools); // fallback
       } finally {
         setIsLoading(false);
       }
     }
+
     fetchSchools();
   }, []);
 
@@ -78,8 +93,6 @@ export default function SchoolsPage() {
     startIndex,
     startIndex + ITEMS_PER_PAGE
   );
-
-  console.log("🖼️ Rendering SchoolsPage with schools:", paginatedSchools);
 
   return (
     <DashboardLayout>

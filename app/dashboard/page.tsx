@@ -39,15 +39,29 @@ export default function DashboardPage() {
     async function loadData() {
       setIsLoading(true);
       try {
-        const res = await fetch("/api/forms/akGkJBQrKG6gWJ6daFNRtR", {
-          headers: { "Cache-Control": "no-cache" },
-        });
-        if (!res.ok) throw new Error(`API error: ${res.statusText}`);
-        const data = await res.json();
+        const formUids = [
+          "akGkJBQrKG6gWJ6daFNRtR", // original
+          "aHcZMhtYyZVbHmeSBWekQV",
+          "aUBsroNaJkqhgmuXnxCbJT",
+          "aXnSzAesKR8e6sp4ZzDAdr",
+        ];
 
-        console.log("Fetched data:", data); // Debug log
+        const allResults: any[] = [];
 
-        const transformed = transformKoboDataToAppFormat(data.results || data);
+        for (const uid of formUids) {
+          const res = await fetch(`/api/forms/${uid}`);
+          if (!res.ok) {
+            throw new Error(
+              `Failed to fetch data for UID ${uid}: ${res.statusText}`
+            );
+          }
+
+          const data = await res.json();
+          const koboData = data.results || data;
+          allResults.push(...koboData);
+        }
+
+        const transformed = transformKoboDataToAppFormat(allResults);
         if (!isMounted) return;
 
         console.log("Transformed data:", transformed); // Debug log

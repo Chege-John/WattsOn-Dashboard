@@ -35,10 +35,29 @@ export default function MapPage() {
     async function fetchData() {
       try {
         setIsLoading(true);
-        const res = await fetch("/api/forms/akGkJBQrKG6gWJ6daFNRtR");
-        const data = await res.json();
-        const koboData = data.results || data;
-        const { students, summary } = transformKoboDataToAppFormat(koboData);
+        const formUids = [
+          "akGkJBQrKG6gWJ6daFNRtR", // original
+          "aHcZMhtYyZVbHmeSBWekQV",
+          "aUBsroNaJkqhgmuXnxCbJT",
+          "aXnSzAesKR8e6sp4ZzDAdr",
+        ];
+
+        const allResults: any[] = [];
+
+        for (const uid of formUids) {
+          const res = await fetch(`/api/forms/${uid}`);
+          if (!res.ok) {
+            throw new Error(
+              `Failed to fetch data for UID ${uid}: ${res.status} ${res.statusText}`
+            );
+          }
+
+          const data = await res.json();
+          const koboData = data.results || data;
+          allResults.push(...koboData);
+        }
+
+        const { students, summary } = transformKoboDataToAppFormat(allResults);
         setStudents(students || []);
         setSchools(summary.schools || []);
       } catch (err: any) {

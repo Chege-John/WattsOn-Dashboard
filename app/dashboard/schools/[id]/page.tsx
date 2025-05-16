@@ -1,5 +1,3 @@
-// src/app/(dashboard)/schools/[id]/page.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -22,19 +20,38 @@ export default function SchoolDetailPage() {
     async function fetchSchool() {
       try {
         setIsLoading(true);
-        const res = await fetch("/api/forms/akGkJBQrKG6gWJ6daFNRtR");
-        if (!res.ok) {
-          throw new Error(`Failed to fetch school data: ${res.statusText}`);
+
+        const formUids = [
+          "akGkJBQrKG6gWJ6daFNRtR", // original
+          "aHcZMhtYyZVbHmeSBWekQV",
+          "aUBsroNaJkqhgmuXnxCbJT",
+          "aXnSzAesKR8e6sp4ZzDAdr",
+        ];
+
+        const allResults: any[] = [];
+
+        for (const uid of formUids) {
+          const res = await fetch(`/api/forms/${uid}`);
+          if (!res.ok) {
+            throw new Error(
+              `Failed to fetch data for UID ${uid}: ${res.statusText}`
+            );
+          }
+
+          const data = await res.json();
+          const koboData = data.results || data;
+          allResults.push(...koboData);
         }
-        const data = await res.json();
-        console.log("📦 API response for school:", data);
-        const koboData = data.results || data;
-        const { summary } = transformKoboDataToAppFormat(koboData);
-        console.log("✅ Transformed school data:", summary.schools);
+
+        console.log("📦 Combined detail API response:", allResults);
+
+        const { summary } = transformKoboDataToAppFormat(allResults);
         const foundSchool = summary.schools.find((s: School) => s.id === id);
+
         if (!foundSchool) {
           throw new Error(`School not found for ID: ${id}`);
         }
+
         setSchool(foundSchool);
         setError(null);
       } catch (err: any) {
@@ -45,6 +62,7 @@ export default function SchoolDetailPage() {
         setIsLoading(false);
       }
     }
+
     fetchSchool();
   }, [id]);
 
