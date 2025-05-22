@@ -658,7 +658,7 @@ export default function SchoolsPage() {
                 {Array.from(
                   { length: Math.min(5, paginationData.totalPages) },
                   (_, i) => {
-                    let pageNum;
+                    let pageNum: number;
                     if (paginationData.totalPages <= 5) {
                       pageNum = i + 1;
                     } else if (currentPage <= 3) {
