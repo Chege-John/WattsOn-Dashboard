@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
 import { CardStat } from "@/components/dashboard/card-stat";
 import { ChartContainer } from "@/components/dashboard/chart-container";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -11,8 +11,25 @@ import { mockStudents, mockSummary } from "@/lib/data/mock-data";
 import { transformKoboDataToAppFormat } from "@/lib/data/kobo-transformer";
 
 // Import the chart components directly
-// No need for dynamic import if they're properly marked with "use client"
 import { BarChart, PieChart } from "@/components/dashboard/charts";
+
+// Constants
+const FORM_UIDS = [
+  "akGkJBQrKG6gWJ6daFNRtR",
+  "aHcZMhtYyZVbHmeSBWekQV",
+  "aUBsroNaJkqhgmuXnxCbJT",
+  "aXnSzAesKR8e6sp4ZzDAdr",
+] as const;
+
+const CACHE_KEY = "dashboard_data";
+const CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours
+// 5 * 60 * 1000; // 5 minutes
+
+// Types
+interface CacheData {
+  data: { students: Student[]; summary: Summary };
+  timestamp: number;
+}
 
 // Fallback loading component
 const ChartLoading = ({ height = 250 }: { height?: number }) => (
@@ -21,6 +38,118 @@ const ChartLoading = ({ height = 250 }: { height?: number }) => (
     style={{ height: `${height}px` }}
   />
 );
+
+// Cache utilities
+const getCachedData = (): CacheData | null => {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (!cached) return null;
+
+    const parsedCache = JSON.parse(cached) as CacheData;
+    const now = Date.now();
+
+    if (now - parsedCache.timestamp > CACHE_DURATION) {
+      localStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+
+    return parsedCache;
+  } catch {
+    return null;
+  }
+};
+
+const setCachedData = (data: { students: Student[]; summary: Summary }) => {
+  try {
+    const cacheData: CacheData = {
+      data,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+  } catch (error) {
+    console.warn("Failed to cache data:", error);
+  }
+};
+
+// Optimized data fetching with parallel requests and caching
+const fetchAllFormsData = async (signal?: AbortSignal): Promise<any[]> => {
+  // Check cache first
+  const cachedData = getCachedData();
+  if (cachedData) {
+    console.log("Using cached data");
+    return Promise.resolve([cachedData.data]);
+  }
+
+  console.log("Fetching fresh data from APIs");
+
+  // Create parallel fetch promises with timeout
+  const fetchPromises = FORM_UIDS.map(async (uid) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    try {
+      const response = await fetch(`/api/forms/${uid}`, {
+        signal: signal || controller.signal,
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        uid,
+        data: data.results || data,
+        success: true,
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.warn(`Failed to fetch data for UID ${uid}:`, error);
+      return {
+        uid,
+        data: [],
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  });
+
+  // Wait for all requests to complete (or fail)
+  const results = await Promise.allSettled(fetchPromises);
+
+  // Extract successful results
+  const allResults: any[] = [];
+  let failedRequests = 0;
+
+  results.forEach((result) => {
+    if (result.status === "fulfilled" && result.value.success) {
+      allResults.push(...result.value.data);
+    } else {
+      failedRequests++;
+      if (result.status === "fulfilled") {
+        console.error(
+          `Failed to fetch ${result.value.uid}:`,
+          result.value.error
+        );
+      }
+    }
+  });
+
+  // If more than half the requests failed, throw an error
+  if (failedRequests > FORM_UIDS.length / 2) {
+    throw new Error(
+      `Failed to fetch data from ${failedRequests}/${FORM_UIDS.length} forms`
+    );
+  }
+
+  return allResults;
+};
 
 export default function DashboardPage() {
   const [students, setStudents] = useState<Student[]>(mockStudents);
@@ -34,83 +163,109 @@ export default function DashboardPage() {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    async function loadData() {
-      setIsLoading(true);
-      try {
-        const formUids = [
-          "akGkJBQrKG6gWJ6daFNRtR", // original
-          "aHcZMhtYyZVbHmeSBWekQV",
-          "aUBsroNaJkqhgmuXnxCbJT",
-          "aXnSzAesKR8e6sp4ZzDAdr",
-        ];
+  // Memoized data loading function
+  const loadData = useCallback(async (signal?: AbortSignal) => {
+    setIsLoading(true);
+    setError(null);
 
-        const allResults: any[] = [];
+    try {
+      // Check cache first
+      const cachedData = getCachedData();
+      if (cachedData) {
+        setStudents(cachedData.data.students);
+        setSummary(cachedData.data.summary);
+        setIsLoading(false);
+        return;
+      }
 
-        for (const uid of formUids) {
-          const res = await fetch(`/api/forms/${uid}`);
-          if (!res.ok) {
-            throw new Error(
-              `Failed to fetch data for UID ${uid}: ${res.statusText}`
-            );
-          }
+      const allResults = await fetchAllFormsData(signal);
 
-          const data = await res.json();
-          const koboData = data.results || data;
-          allResults.push(...koboData);
-        }
+      if (signal?.aborted) return;
 
-        const transformed = transformKoboDataToAppFormat(allResults);
-        if (!isMounted) return;
+      const transformed = transformKoboDataToAppFormat(allResults);
 
-        console.log("Transformed data:", transformed); // Debug log
+      console.log("Transformed data:", transformed);
 
-        if (
-          !Array.isArray(transformed.students) ||
-          !Array.isArray(transformed.summary?.genderDistribution)
-        ) {
-          console.warn("Invalid transformed data, using mock data");
-          setStudents(mockStudents);
-          setSummary(mockSummary);
-          setError("Invalid data format, using mock data");
-          return;
-        }
-        setStudents(transformed.students);
-        setSummary(transformed.summary);
-        setError(null);
-      } catch (err) {
-        console.error("Error:", err);
-        if (isMounted) {
-          setError("Failed to load data. Using mock data.");
-          setStudents(mockStudents);
-          setSummary(mockSummary);
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
+      // Validate transformed data
+      if (
+        !Array.isArray(transformed.students) ||
+        !Array.isArray(transformed.summary?.genderDistribution)
+      ) {
+        console.warn("Invalid transformed data structure, using mock data");
+        setError("Invalid data format, using mock data");
+        return;
+      }
+
+      // Cache the successful result
+      setCachedData(transformed);
+
+      setStudents(transformed.students);
+      setSummary(transformed.summary);
+      setError(null);
+    } catch (err) {
+      if (signal?.aborted) return;
+
+      console.error("Error loading data:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load data. Using mock data."
+      );
+
+      // Keep using mock data on error
+      setStudents(mockStudents);
+      setSummary(mockSummary);
+    } finally {
+      if (!signal?.aborted) {
+        setIsLoading(false);
       }
     }
-    loadData();
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
-  // Memoize computed data
+  // Data loading effect with cleanup
+  useEffect(() => {
+    const controller = new AbortController();
+    loadData(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadData]);
+
+  // Memoize computed data with dependency optimization
   const careerAspirationsByGender = useMemo(() => {
     return prepareCareerAspirationsByGender(students);
   }, [students]);
 
-  // Check if data is valid for charts
-  const hasValidGenderData =
-    summary?.genderDistribution &&
-    Array.isArray(summary.genderDistribution) &&
-    summary.genderDistribution.length > 0;
+  // Memoize validation checks
+  const hasValidGenderData = useMemo(() => {
+    return (
+      summary?.genderDistribution &&
+      Array.isArray(summary.genderDistribution) &&
+      summary.genderDistribution.length > 0
+    );
+  }, [summary?.genderDistribution]);
 
-  const hasValidCareerData =
-    careerAspirationsByGender &&
-    Array.isArray(careerAspirationsByGender) &&
-    careerAspirationsByGender.length > 0;
+  const hasValidCareerData = useMemo(() => {
+    return (
+      careerAspirationsByGender &&
+      Array.isArray(careerAspirationsByGender) &&
+      careerAspirationsByGender.length > 0
+    );
+  }, [careerAspirationsByGender]);
+
+  // Memoize gender distribution total
+  const genderTotal = useMemo(() => {
+    if (!hasValidGenderData) return 0;
+    return summary.genderDistribution.reduce((acc, val) => acc + val.count, 0);
+  }, [hasValidGenderData, summary?.genderDistribution]);
+
+  // Manual refresh function
+  const handleRefresh = useCallback(() => {
+    localStorage.removeItem(CACHE_KEY);
+    const controller = new AbortController();
+    loadData(controller.signal);
+  }, [loadData]);
 
   if (isLoading) {
     return (
@@ -147,11 +302,19 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          {error && (
-            <div className="bg-red-50 text-red-700 px-4 py-2 rounded-md text-sm">
-              {error}
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleRefresh}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Refresh Data
+            </button>
+            {error && (
+              <div className="bg-red-50 text-red-700 px-4 py-2 rounded-md text-sm">
+                {error}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -237,10 +400,7 @@ export default function DashboardPage() {
                       nameKey="gender"
                       colors={["#875CF5", "#FA2C37", "#FF6900"]}
                       label="Gender"
-                      totalAmount={`${summary.genderDistribution.reduce(
-                        (acc, val) => acc + val.count,
-                        0
-                      )}`}
+                      totalAmount={`${genderTotal}`}
                       showTextAnchor
                     />
                   </Suspense>
