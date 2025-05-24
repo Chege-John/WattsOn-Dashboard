@@ -80,7 +80,6 @@ const fetchAllFormsData = async (signal?: AbortSignal): Promise<any[]> => {
     return Promise.resolve([cachedData.data]);
   }
 
-  console.log("Fetching fresh data from APIs");
 
   // Create parallel fetch promises with timeout
   const fetchPromises = FORM_UIDS.map(async (uid) => {
@@ -184,7 +183,6 @@ export default function DashboardPage() {
 
       const transformed = transformKoboDataToAppFormat(allResults);
 
-      console.log("Transformed data:", transformed);
 
       // Validate transformed data
       if (
