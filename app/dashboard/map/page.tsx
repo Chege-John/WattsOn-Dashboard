@@ -364,7 +364,7 @@ export default function MapPage() {
         map.remove();
       }
     };
-  }, [mapInitialized, mapStyle, schools, students]);
+  }, [mapStyle]);
 
   // Update Data
   useEffect(() => {
